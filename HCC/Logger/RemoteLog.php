@@ -159,11 +159,10 @@ namespace HCC\Logger {
 
             if ($in_background === true && function_exists('pcntl_fork')) {
                 $write_info = $this->backgroundPostCurl($log, $jwtToken);
-
             } else {
                 $write_info = $this->postCurl($log, $jwtToken);
-                $entries->clear();
             }
+            $entries->clear();
             return $write_info;
         }
 
