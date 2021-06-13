@@ -4,7 +4,7 @@
  * @author HasioCC
  */
 
-namespace HCC {
+namespace HCC\Logger {
 
 
     require 'RemoteLogEntries.php';
@@ -17,8 +17,9 @@ namespace HCC {
 
         private $auth_key = "";
         private $server_host = "";
-        private $connect_server_timeout = 3; //logServer 連線超過幾秒就強制執行中斷(sec)
+        private $connect_server_timeout = 5; //logServer 連線超過幾秒就強制執行中斷(sec)
         private $send_server_time_out = 0; //傳送log至Server 等待時間最多秒數(sec)
+        private $hostTag = ""; //主機來源標示，如果參數有設定，則logfileName的檔名格式為{hostTag}-logfileName
 
         function __construct($config = [])
         {
@@ -37,6 +38,10 @@ namespace HCC {
             if (isset($config["send_server_time_out"])) {
                 $this->connect_server_timeout = $config["send_server_time_out"];
             }
+
+            if (isset($config["hostTag"])) {
+                $this->hostTag = $config["hostTag"];
+            }
         }
 
         /**
@@ -49,11 +54,38 @@ namespace HCC {
         }
 
         /**
+         * 回傳遠端LogServer來源
+         * @return mixed|string
+         */
+        public function getRemoteServer()
+        {
+            return $this->server_host;
+        }
+
+        /**
          * @param string $auth_key 設定發送到遠程logServer金鑰(會強制覆蓋建構子進來的設定)
          */
         public function setAuthServerKey($auth_key)
         {
             $this->auth_key = $auth_key;
+        }
+
+        /**
+         * 回傳發送到遠程logServer金鑰
+         * @return mixed|string
+         */
+        public function getAuthServerKey()
+        {
+            return $this->auth_key;
+        }
+
+        /**
+         * 回傳可以允許連到LogServer 最長執行秒數
+         * @return int|mixed
+         */
+        public function getConnectServerTimeOut()
+        {
+            return $this->connect_server_timeout;
         }
 
         /**
@@ -65,11 +97,38 @@ namespace HCC {
         }
 
         /**
-         * @param string 傳送log至Server 等待時間最多秒數(會強制覆蓋建構子進來的設定)
+         * 傳送log至Server 等待時間最多秒數
+         * @return int
+         */
+        public function getSendServerTimeOut()
+        {
+            return $this->send_server_time_out;
+        }
+
+        /**
+         * @param int 傳送log至Server 等待時間最多秒數(會強制覆蓋建構子進來的設定)
          */
         public function setSendServerTimeOut($sec)
         {
             $this->send_server_time_out = $sec;
+        }
+
+        /**
+         * 回傳主機來源標籤
+         * @return mixed|string
+         */
+        public function getHostTag()
+        {
+            return $this->hostTag;
+        }
+
+        /**
+         * 主機來源標籤，如果有標示則保存的logfileName格式為{hostTag}-logfileName(預設會抓建構子進來的設定參數資料)
+         * @param string $hostTag
+         */
+        public function setHostTag($hostTag)
+        {
+            $this->hostTag = $hostTag;
         }
 
         /**
@@ -78,7 +137,7 @@ namespace HCC {
          * @param bool $in_background 是否子線程發送log(在環境允許的情況下)
          * @return bool
          */
-        public function writeLog($logfileName, RemoteLogEntries $entries, $in_background = false)
+        public function writeLog($logfileName, RemoteLogEntries $entries, $in_background = true)
         {
 
             $write_info['status'] = false;
@@ -90,7 +149,7 @@ namespace HCC {
                 return $write_info;
             }
 
-            $log['logName'] = $logfileName;
+            $log['logName'] = empty($this->hostTag) ? $logfileName : "{$this->hostTag}-{$logfileName}";
             $log['entries'] = $entries->getEntries();
 
             $jwtToken = $this->creat_jwt_token($logfileName);
@@ -123,6 +182,34 @@ namespace HCC {
             );
             $jwt = JWT::encode($payload, $this->auth_key);
             return $jwt;
+        }
+
+        private function backgroundPostCurl($data, $jwt_token)
+        {
+            $write_info['status'] = false;
+            $write_info['message'] = "";
+
+            $pid = pcntl_fork();
+            if ($pid == -1) {
+                $write_info['status'] = false;
+                $write_info['message'] = "create thread error";
+                return $write_info;
+            } else {
+                if ($pid) {
+                    pcntl_wait($status, WNOHANG);
+                } else {
+                    try {
+                        $this->postCurl($data, $jwt_token);
+                    } finally {
+                        posix_kill(posix_getpid(), SIGTERM);
+                    }
+                }
+            }
+
+            $write_info['status'] = true;
+            $write_info['message'] = "";
+
+            return $write_info;
         }
 
         private function postCurl($data, $jwt_token)
@@ -165,31 +252,6 @@ namespace HCC {
                 curl_close($ch);
             }
             return $output;
-        }
-
-        private function backgroundPostCurl($data, $jwt_token){
-            $write_info['status'] = false;
-            $write_info['message'] = "";
-
-            $pid = pcntl_fork();
-            if ($pid == -1) {
-                $write_info['status'] = false;
-                $write_info['message'] = "create thread error";
-                return $write_info;
-            }else if ($pid) {
-                pcntl_wait($status,WNOHANG);
-            } else {
-                try{
-                    $this->postCurl($data, $jwt_token);
-                }finally{
-                    posix_kill(posix_getpid() , SIGTERM);
-                }
-            }
-
-            $write_info['status'] = true;
-            $write_info['message'] = "";
-
-            return $write_info;
         }
     }
 }

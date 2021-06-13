@@ -1,6 +1,6 @@
 <?php
 
-namespace HCC {
+namespace HCC\Logger {
 
     class RemoteLogEntries
     {
@@ -36,6 +36,10 @@ namespace HCC {
 
         private $labels = [];
 
+        private $hostTag = "";
+
+        private $enable_debug_level = true;
+
         /**
          * @param array $labels 設定全域的log標籤
          * @example $this->setGlobalLabels([["key1":"value2"],["key1":"value2"]])
@@ -43,6 +47,59 @@ namespace HCC {
         public function setGlobalLabels($labels)
         {
             $this->labels = $labels;
+        }
+
+        /**
+         * 回傳全域設定的Log標籤
+         * @return array
+         * @example
+         *          回傳格式:
+         *          [
+         *             ["key1":"value2"],
+         *             ["key1":"value2"]
+         *          ]
+         *
+         */
+        public function getGlobalLabels()
+        {
+            return $this->labels;
+        }
+
+
+        /**
+         * 指定全域主機標籤
+         * @param $hostTag
+         */
+        public function setGlobalLaHost($hostTag)
+        {
+            $this->hostTag = $hostTag;
+        }
+
+        /**
+         * 回傳全域主機標籤
+         * @return string
+         */
+        public function getGlobalLaHost()
+        {
+            return $this->hostTag;
+        }
+
+        /**
+         * 會傳是否紀錄DEBUG LEVEL 等級的LOG
+         * @return bool
+         */
+        public function getEnableDebugLevel()
+        {
+            return $this->enable_debug_level;
+        }
+
+        /**
+         * 設定是否紀錄DEBUG LEVEL 等級的LOG
+         * @param $value
+         */
+        public function setEnableDebugLevel($value)
+        {
+            $this->enable_debug_level = $value;
         }
 
         /**
@@ -61,6 +118,13 @@ namespace HCC {
             $sourceLocation = null,
             $httpRequest = null
         ) {
+
+            if ($this->enable_debug_level === false) {
+                if ($level == self::DEBUG) {
+                    return;
+                }
+            }
+
             $log = [];
 
             $log['message']['time'] = date(DATE_RFC3339);
@@ -83,6 +147,11 @@ namespace HCC {
                 if (is_array($this->labels) && count($this->labels) > 0) {
                     $log['options']['labels'] = $this->labels;
                 }
+            }
+
+            //如果有指定全域主機標籤，則把label裡的host替換掉，如果沒有就建立
+            if (!empty($this->hostTag)) {
+                $log['options']['labels']['host_tag'] = $this->hostTag;
             }
 
             if (is_array($operation) && count($operation) > 0) {
