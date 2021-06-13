@@ -6,6 +6,7 @@
 
 namespace HCC {
 
+
     require 'RemoteLogEntries.php';
 
     use Exception;
@@ -93,11 +94,25 @@ namespace HCC {
             $log['entries'] = $entries->getEntries();
 
             $jwtToken = $this->creat_jwt_token($logfileName);
-            $write_status = $this->post_curl($log, $jwtToken);
-            $entries->clear();
-            return $write_status;
+
+            ignore_user_abort(true);
+            set_time_limit(0);
+
+            if ($in_background === true && function_exists('pcntl_fork')) {
+                $write_info = $this->backgroundPostCurl($log, $jwtToken);
+
+            } else {
+                $write_info = $this->postCurl($log, $jwtToken);
+                $entries->clear();
+            }
+            return $write_info;
         }
 
+        /**
+         * 產生要發送到LogServer 的 Token
+         * @param string $logfileName log檔名
+         * @return string
+         */
         private function creat_jwt_token($logfileName)
         {
             $time = time();
@@ -110,7 +125,7 @@ namespace HCC {
             return $jwt;
         }
 
-        private function post_curl($data, $jwt_token)
+        private function postCurl($data, $jwt_token)
         {
             $output['status'] = false;
             $output['message'] = "";
@@ -152,6 +167,29 @@ namespace HCC {
             return $output;
         }
 
+        private function backgroundPostCurl($data, $jwt_token){
+            $write_info['status'] = false;
+            $write_info['message'] = "";
 
+            $pid = pcntl_fork();
+            if ($pid == -1) {
+                $write_info['status'] = false;
+                $write_info['message'] = "create thread error";
+                return $write_info;
+            }else if ($pid) {
+                pcntl_wait($status,WNOHANG);
+            } else {
+                try{
+                    $this->postCurl($data, $jwt_token);
+                }finally{
+                    posix_kill(posix_getpid() , SIGTERM);
+                }
+            }
+
+            $write_info['status'] = true;
+            $write_info['message'] = "";
+
+            return $write_info;
+        }
     }
 }

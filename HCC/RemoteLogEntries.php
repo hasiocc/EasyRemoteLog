@@ -81,7 +81,7 @@ namespace HCC {
                 $log['options']['labels'] = $labels;
             } else {
                 if (is_array($this->labels) && count($this->labels) > 0) {
-                    $log['options']['labels'] = $labels;
+                    $log['options']['labels'] = $this->labels;
                 }
             }
 
